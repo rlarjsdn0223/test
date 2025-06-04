@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>텍스트 어드벤처 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none; 
+        }
+        .game-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .choice-button {
+            transition: all 0.3s ease;
+        }
+        .choice-button:hover:not(:disabled), .choice-button:focus:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .choice-button:disabled {
+            background-color: #4A5568; /* Tailwind slate-600 */
+            color: #A0AEC0; /* Tailwind slate-400 */
+            cursor: not-allowed;
+        }
+        .message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            background-color: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            border-radius: 8px;
+            text-align: center;
+            color: #1a202c; /* Dark text for readability */
+        }
+        .message-box-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <div class="game-container w-full max-w-2xl mx-auto bg-slate-800 p-6 sm:p-8 rounded-lg shadow-2xl">
+        <h1 class="text-3xl sm:text-4xl font-bold text-center text-sky-400 mb-6">미지의 숲</h1>
+
+        <div id="story" class="text-lg sm:text-xl text-slate-300 mb-8 leading-relaxed min-h-[100px] rounded-md p-4 bg-slate-700">
+            여기에 게임 스토리가 표시됩니다.
+        </div>
+
+        <div id="choices" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- 선택지 버튼 동적 생성 -->
+        </div>
+
+        <div id="player-stats" class="mt-8 p-4 bg-slate-700 rounded-md">
+            <h2 class="text-xl font-semibold text-sky-500 mb-2">플레이어 정보</h2>
+            <p id="player-location" class="text-slate-300">현재 위치: 시작 지점</p>
+            <p id="player-inventory" class="text-slate-300">소지품: 없음</p>
+        </div>
+    </div>
+
+    <div id="custom-message-box" class="message-box hidden">
+        <p id="message-text" class="mb-4"></p>
+        <button id="message-ok-button" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 choice-button">확인</button>
+    </div>
+    <div id="custom-message-backdrop" class="message-box-backdrop hidden"></div>
+
+    <script>
+        // 플레이어 상태
+        let player = {
+            inventory: []
+        };
+
+        // 게임 데이터
+        const gameData = {
+            start: {
+                story: "당신은 어두컴컴한 숲 속에 서 있습니다. 사방이 나무로 둘러싸여 방향을 알 수 없습니다. 희미하게 두 갈래 길이 보입니다.",
+                choices: [
+                    { text: "북쪽으로 향한다", nextScene: "northPath" },
+                    { text: "동쪽으로 향한다", nextScene: "eastPath" }
+                ],
+                location: "숲 입구"
+            },
+            northPath: {
+                story: "북쪽 길을 따라 걷자, 낡은 오두막을 발견했습니다. 문은 살짝 열려 있고, 오두막 옆 땅바닥에 반짝이는 무언가가 보입니다.",
+                choices: [
+                    { text: "오두막에 들어간다", nextScene: "cabinEntrance" },
+                    { text: "반짝이는 것을 줍는다", nextScene: "getKey", id: "getShinyObjectKey" },
+                    { text: "계속 북쪽으로 간다", nextScene: "deepForest" }
+                ],
+                location: "북쪽 길"
+            },
+            getKey: {
+                story: "땅에서 작은 [녹슨 열쇠]를 주웠습니다.",
+                itemGained: "녹슨 열쇠",
+                choices: [
+                    { text: "오두막에 들어간다", nextScene: "cabinEntrance" },
+                    { text: "계속 북쪽으로 간다", nextScene: "deepForest" }
+                ],
+                location: "북쪽 길 (열쇠 획득)"
+            },
+            cabinEntrance: {
+                story: "오두막 문턱에 섰습니다. 안은 먼지가 가득하고 거미줄이 쳐져 있습니다. 테이블 위에는 오래된 일기장이 놓여 있고, 구석에는 자물쇠로 잠긴 낡은 나무 상자가 보입니다.",
+                choices: [
+                    { text: "일기장을 읽는다", nextScene: "readDiary" },
+                    { text: "나무 상자를 열어본다", nextScene: "tryOpenChest" },
+                    { text: "오두막을 나간다", nextScene: "northPathReturn" }
+                ],
+                location: "오두막 입구"
+            },
+            northPathReturn: {
+                story: "오두막에서 나와 다시 북쪽 길로 돌아왔습니다.",
+                choices: [
+                    { text: "오두막에 다시 들어간다", nextScene: "cabinEntrance" },
+                    { text: "반짝이는 것을 확인한다", nextScene: "getKey", id: "getShinyObjectKeyAgain" },
+                    { text: "계속 북쪽으로 간다", nextScene: "deepForest" },
+                    { text: "남쪽(시작 지점)으로 돌아간다", nextScene: "start" }
+                ],
+                location: "북쪽 길"
+            },
+            readDiary: {
+                story: "테이블 위의 일기장을 펼쳤습니다. '숲의 저주... 탈출구는 오직 하나... 오래된 상자 안에...' 뒷부분은 찢어져 읽을 수 없습니다.",
+                choices: [
+                    { text: "나무 상자를 살펴본다", nextScene: "tryOpenChest" },
+                    { text: "오두막을 나간다", nextScene: "northPathReturn" }
+                ],
+                location: "오두막 안 (일기장)"
+            },
+            tryOpenChest: {
+                story: "구석에 놓인 낡은 나무 상자를 살펴봅니다. 자물쇠로 단단히 잠겨 있습니다.",
+                choices: [
+                    { text: "열쇠로 상자를 연다", nextScene: "openChest", requiredItem: "녹슨 열쇠", itemUsed: "녹슨 열쇠" },
+                    { text: "일기장을 다시 읽는다", nextScene: "readDiary" },
+                    { text: "오두막을 나간다", nextScene: "northPathReturn" }
+                ],
+                location: "오두막 안 (상자 앞)"
+            },
+            openChest: {
+                story: "녹슨 열쇠를 자물쇠에 넣고 돌리자 '철컥' 소리와 함께 상자가 열렸습니다. 안에는 [낡은 지도]와 작은 [나침반]이 들어있습니다!",
+                itemGained: "낡은 지도", 
+                // itemGainedSecondary: "나침반", // 다중 아이템 획득 확장 가능
+                choices: [
+                    { text: "지도를 사용해 숲을 탈출한다!", nextScene: "escapeWithMap" }
+                ],
+                location: "오두막 안 (상자 개방)"
+            },
+            escapeWithMap: {
+                story: "낡은 지도를 펼치자 숲의 숨겨진 길이 나타났습니다. 나침반은 정확한 방향을 가리킵니다. 당신은 지혜롭게 길을 따라 마침내 숲을 빠져나왔습니다!",
+                choices: [
+                    { text: "새로운 모험을 시작한다 (게임 다시 시작)", nextScene: "start" }
+                ],
+                location: "숲 탈출 성공!",
+                isEnding: true,
+                message: "축하합니다! 숲을 성공적으로 탈출했습니다! (굿 엔딩)"
+            },
+            eastPath: {
+                story: "동쪽으로 향하자, 졸졸 흐르는 작은 강을 만났습니다. 강물은 맑아 보입니다.",
+                choices: [
+                    { text: "강물을 마신다", nextScene: "drinkWater" },
+                    { text: "강을 따라간다", nextScene: "followRiver" }
+                ],
+                location: "동쪽 강가"
+            },
+            drinkWater: {
+                story: "시원한 강물을 마시니 정신이 맑아지는 기분입니다. 기운을 차리고 주변을 둘러봅니다.",
+                choices: [
+                    { text: "강을 따라 계속 이동한다", nextScene: "followRiver" },
+                    { text: "숲으로 돌아간다", nextScene: "start" }
+                ],
+                location: "강가"
+            },
+            followRiver: {
+                story: "강을 따라 한참을 걸으니, 멀리 마을의 불빛이 보입니다! 당신은 숲을 빠져나왔습니다.",
+                choices: [
+                    { text: "다시 숲으로... (게임 다시 시작)", nextScene: "start" }
+                ],
+                location: "마을 근처",
+                isEnding: true,
+                message: "마을을 발견하고 숲을 탈출했습니다! (일반 엔딩)"
+            },
+            deepForest: {
+                story: "더 깊은 숲으로 들어왔습니다. 길을 잃은 것 같습니다. 갑자기 발 밑이 무너지며 어둠 속으로 떨어집니다...",
+                choices: [
+                    { text: "꿈이었을까... (게임 다시 시작)", nextScene: "start" }
+                ],
+                location: "깊은 숲 함정",
+                isEnding: true,
+                message: "함정에 빠져 게임이 종료됩니다. (배드 엔딩)"
+            }
+        };
+
+        let currentScene = ""; // 초기값은 빈 문자열로 설정
+
+        const storyElement = document.getElementById("story");
+        const choicesElement = document.getElementById("choices");
+        const playerLocationElement = document.getElementById("player-location");
+        const playerInventoryElement = document.getElementById("player-inventory");
+        
+        const messageBox = document.getElementById('custom-message-box');
+        const messageText = document.getElementById('message-text');
+        const messageOkButton = document.getElementById('message-ok-button');
+        const messageBackdrop = document.getElementById('custom-message-backdrop');
+
+        function showMessage(message) {
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden');
+            messageBackdrop.classList.remove('hidden');
+        }
+        
+        function updateInventoryDisplay() {
+            if (player.inventory.length === 0) {
+                playerInventoryElement.textContent = "소지품: 없음";
+            } else {
+                playerInventoryElement.textContent = `소지품: ${player.inventory.join(", ")}`;
+            }
+        }
+
+        messageOkButton.addEventListener('click', () => {
+            messageBox.classList.add('hidden');
+            messageBackdrop.classList.add('hidden');
+            const nextSceneFromChoice = messageBox.dataset.nextScene;
+
+            if (nextSceneFromChoice) {
+                // "start" 씬으로 이동 시 인벤토리 초기화는 버튼 클릭 리스너에서 이미 처리됨
+                renderScene(nextSceneFromChoice);
+            }
+            delete messageBox.dataset.nextScene; // 사용 후 속성 제거
+        });
+
+        function renderScene(sceneName) {
+            currentScene = sceneName;
+            const scene = gameData[sceneName];
+
+            if (!scene) {
+                console.error("오류: 정의되지 않은 장면입니다 - " + sceneName);
+                storyElement.textContent = "오류: 게임 데이터를 불러올 수 없습니다.";
+                choicesElement.innerHTML = "";
+                playerLocationElement.textContent = "현재 위치: 알 수 없음";
+                updateInventoryDisplay();
+                return;
+            }
+
+            // 아이템 획득 처리
+            if (scene.itemGained && !player.inventory.includes(scene.itemGained)) {
+                player.inventory.push(scene.itemGained);
+                // 아이템 획득 메시지를 스토리 텍스트에 자연스럽게 포함시키거나, showMessage 사용 가능
+                // storyElement.textContent = scene.story + ` (당신은 ${scene.itemGained}을(를) 얻었습니다.)`;
+                 // showMessage(`${scene.itemGained}을(를) 획득했습니다!`); // 팝업으로 알림
+            }
+             // 스토리 텍스트 업데이트 (아이템 획득 정보 포함 가능)
+            let storyText = scene.story;
+            if (scene.itemGained && scene.story.includes(`[${scene.itemGained}]`)) {
+                 // 스토리 내에 아이템 이름이 이미 강조되어 있다면 추가 텍스트 불필요
+            } else if (scene.itemGained) {
+                storyText += ` (당신은 ${scene.itemGained}을(를) 얻었습니다.)`;
+            }
+            storyElement.textContent = storyText;
+
+
+            playerLocationElement.textContent = `현재 위치: ${scene.location || "알 수 없음"}`;
+            updateInventoryDisplay(); // 인벤토리 표시 업데이트
+
+            choicesElement.innerHTML = ""; 
+
+            scene.choices.forEach(choice => {
+                const button = document.createElement("button");
+                button.textContent = choice.text;
+                button.className = "choice-button w-full bg-sky-500 hover:bg-sky-600 text-white font-semibold py-3 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-opacity-75";
+
+                let choiceDisabled = false;
+                // 아이템 요구 조건 확인
+                if (choice.requiredItem && !player.inventory.includes(choice.requiredItem)) {
+                    button.textContent = `${choice.text} (${choice.requiredItem} 필요)`;
+                    button.disabled = true;
+                    choiceDisabled = true;
+                }
+                
+                // 특정 아이템을 이미 가지고 있을 경우, 해당 아이템을 얻는 선택지 비활성화 (예: 열쇠줍기)
+                if ((choice.id === "getShinyObjectKey" || choice.id === "getShinyObjectKeyAgain") && player.inventory.includes("녹슨 열쇠")) {
+                     button.textContent = "반짝이는 것 (이미 열쇠를 주움)";
+                     button.disabled = true;
+                     choiceDisabled = true;
+                }
+
+
+                if (choiceDisabled) {
+                     button.className = "choice-button w-full bg-slate-600 text-slate-400 font-semibold py-3 px-4 rounded-lg shadow-md cursor-not-allowed";
+                }
+
+
+                button.addEventListener("click", () => {
+                    if (button.disabled) return; // 비활성화된 버튼은 클릭 무시
+
+                    // 아이템 사용 처리
+                    if (choice.itemUsed) {
+                        const itemIndex = player.inventory.indexOf(choice.itemUsed);
+                        if (itemIndex > -1) {
+                            player.inventory.splice(itemIndex, 1);
+                            // updateInventoryDisplay(); // renderScene에서 일괄 처리
+                        } else {
+                            // 이 경우는 requiredItem 로직에 의해 발생하지 않아야 함
+                            console.warn(`경고: 사용하려는 아이템(${choice.itemUsed})이 인벤토리에 없습니다.`);
+                            return; // 진행 중단
+                        }
+                    }
+
+                    // "start" 씬으로 가는 선택지일 경우, 플레이어 상태 초기화
+                    if (choice.nextScene === "start") {
+                        player.inventory = [];
+                        // 다른 플레이어 상태가 있다면 여기서 초기화
+                        updateInventoryDisplay(); // 즉시 UI 반영
+                    }
+                    
+                    // 엔딩 장면 처리
+                    if (gameData[currentScene].isEnding) {
+                        messageBox.dataset.nextScene = choice.nextScene; // 다음 씬 정보 저장
+                        showMessage(gameData[currentScene].message || "게임이 종료되었습니다.");
+                    } else {
+                        renderScene(choice.nextScene);
+                    }
+                });
+                choicesElement.appendChild(button);
+            });
+        }
+
+        window.onload = () => {
+            player.inventory = []; // 게임 시작 시 인벤토리 초기화
+            renderScene("start");
+        };
+    </script>
+</body>
+</html>
+
+
