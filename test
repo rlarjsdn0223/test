@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <html>
-    <title> Weekly Test</title> <!-- 제목 -->
-    안녕하세요
+    <head>
+        <title> Weekly Test</title> <!-- 제목 -->
+    </head>
+    <body>
+        안녕하세요
+    </body>
 </html>
